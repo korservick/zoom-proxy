@@ -1,14 +1,12 @@
 #build stage
 FROM golang:alpine AS build
 WORKDIR /src
-ENV CGO_ENABLED=0
 COPY . .
-RUN go build -o /out/zoom-proxy
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-w -s" -o /out/zoom-proxy
 
 #final stage
 FROM scratch AS bin
-COPY --from=build /out/zoom-proxy /
-ENTRYPOINT ./zoom-proxy
-LABEL Name=zoom-proxy Version=0.0.1
+COPY --from=build /out/zoom-proxy /zoom-proxy
 EXPOSE 8080
 ENV PORT=8080
+ENTRYPOINT ["/zoom-proxy"]
