@@ -1,15 +1,14 @@
 #build stage
-FROM golang:alpine AS builder
-WORKDIR /go/src/app
+FROM golang:alpine AS build
+WORKDIR /src
+ENV CGO_ENABLED=0
 COPY . .
-RUN apk add --no-cache git
-RUN go build -v ./...
+RUN go build -o /out/zoom-proxy
 
 #final stage
-FROM alpine:latest
-RUN apk --no-cache add ca-certificates
-COPY --from=builder /go/bin/app /app
-ENTRYPOINT ./app
+FROM scratch AS bin
+COPY --from=build /out/zoom-proxy /
+ENTRYPOINT ./zoom-proxy
 LABEL Name=zoom-proxy Version=0.0.1
 EXPOSE 8080
 ENV PORT=8080
