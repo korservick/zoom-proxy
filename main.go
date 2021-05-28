@@ -13,8 +13,9 @@ import (
 )
 
 const (
-	Red   = "#ff0000"
-	Green = "#00ff00"
+	Red    = "#ff0000"
+	Orange = "#ffa500"
+	Green  = "#00ff00"
 )
 
 type responseJSON struct {
@@ -87,6 +88,9 @@ func zoomSend(data template.Data, channelID string, token string) {
 	switch data.Status {
 	case "firing":
 		message.Content.Head.Style.Color = Red
+		if data.CommonLabels["severity"] == "warning" {
+			message.Content.Head.Style.Color = Orange
+		}
 	case "resolved":
 		message.Content.Head.Style.Color = Green
 	}
