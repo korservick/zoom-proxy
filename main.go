@@ -90,7 +90,8 @@ func zoomSend(data template.Data, channelID string, token string) {
 	case "resolved":
 		message.Content.Head.Style.Color = Green
 	}
-	message.Content.Head.Text = fmt.Sprintf("%s (%s)", data.CommonAnnotations["summary"], data.Status)
+	message.Content.Head.Text = fmt.Sprintf("%s (%s) %s",
+		data.CommonAnnotations["summary"], data.Status, data.CommonLabels["severity"])
 	message.Content.Head.SubHead.Text = fmt.Sprintf("%s/#/alerts?receiver=%s", data.ExternalURL, data.Receiver)
 
 	var body []Body
