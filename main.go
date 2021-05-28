@@ -98,7 +98,7 @@ func zoomSend(data template.Data, channelID string, token string) {
 	for _, alert := range data.Alerts {
 		var alertBody Body
 		alertBody.Type = "message"
-		alertBody.Text = alert.Annotations["summary"]
+		alertBody.Text = alert.Annotations["description"]
 		body = append(body, alertBody)
 	}
 	message.Content.Body = body
