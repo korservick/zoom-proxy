@@ -8,14 +8,19 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strconv"
 
 	"github.com/prometheus/alertmanager/template"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 const (
-	Red    = "#ff0000"
-	Orange = "#ffa500"
-	Green  = "#00ff00"
+	Red            = "#ff0000"
+	Orange         = "#ffa500"
+	Green          = "#00ff00"
+	MaxAlertCounts = 100
 )
 
 type responseJSON struct {
@@ -27,6 +32,7 @@ type Body struct {
 	Type string `json:"type"`
 	Text string `json:"text"`
 }
+
 type zoomMessage struct {
 	IsMarkdownSupport bool `json:"is_markdown_support"`
 	Content           struct {
@@ -42,6 +48,18 @@ type zoomMessage struct {
 		Body []Body `json:"body"`
 	} `json:"content"`
 }
+
+var (
+	alertsProcessed = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "zoom_proxy_processed_alerts_total",
+		Help: "The total number of processed alerts",
+	})
+	sendRequest = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "zoom_proxy_send_request_total",
+		Help: "The total number of sending request by HTTP status code",
+	}, []string{"code"},
+	)
+)
 
 func asJson(w http.ResponseWriter, status int, message string) {
 	data := responseJSON{
@@ -78,11 +96,11 @@ func webhook(w http.ResponseWriter, r *http.Request) {
 	}
 	m, _ := url.ParseQuery(u.RawQuery)
 	//fmt.Println(m)
-	zoomSend(data, m["channel-id"][0], m["token"][0])
+	zoomPrepare(data, m["channel-id"][0], m["token"][0])
 	asJson(w, http.StatusOK, "success")
 }
 
-func zoomSend(data template.Data, channelID string, token string) {
+func zoomPrepare(data template.Data, channelID string, token string) {
 	message := zoomMessage{}
 	message.IsMarkdownSupport = false
 	switch data.Status {
@@ -99,15 +117,30 @@ func zoomSend(data template.Data, channelID string, token string) {
 	message.Content.Head.SubHead.Text = fmt.Sprintf("%s/#/alerts?receiver=%s", data.ExternalURL, data.Receiver)
 
 	var body []Body
+	var alertCounter int
 
 	for _, alert := range data.Alerts {
+		alertCounter += 1
+		alertsProcessed.Inc()
 		var alertBody Body
 		alertBody.Type = "message"
-		alertBody.Text = alert.Annotations["description"]
+		alertBody.Text = fmt.Sprintf("%s %s", alert.Annotations["description"], alert.Annotations["runbook"])
+		if alert.Annotations["description"] == "" {
+			log.Printf("Error alert %s description is empty", alert.Labels["alertname"])
+		}
+		if alertCounter > MaxAlertCounts {
+			message.Content.Body = body
+			zoomSend(message, channelID, token)
+			body = nil
+			alertCounter = 0
+		}
 		body = append(body, alertBody)
 	}
 	message.Content.Body = body
+	zoomSend(message, channelID, token)
+}
 
+func zoomSend(message zoomMessage, channelID string, token string) {
 	bytesRepresentation, err := json.Marshal(message)
 	if err != nil {
 		log.Printf("Error Marshal %v: %v", message, err)
@@ -130,6 +163,7 @@ func zoomSend(data template.Data, channelID string, token string) {
 	if response.StatusCode != 200 {
 		log.Printf("Error Do NewRequest url:%s: token:%v body:%v status:%v", zoomUrl, token, string(bytesRepresentation[:]), response.Status)
 	}
+	sendRequest.WithLabelValues(strconv.Itoa(response.StatusCode)).Inc()
 }
 
 func health(w http.ResponseWriter, _ *http.Request) {
@@ -142,6 +176,7 @@ func health(w http.ResponseWriter, _ *http.Request) {
 func main() {
 	http.HandleFunc("/health", health)
 	http.HandleFunc("/webhook", webhook)
+	http.Handle("/metrics", promhttp.Handler())
 	listenAddress := ":8080"
 	if os.Getenv("PORT") != "" {
 		listenAddress = ":" + os.Getenv("PORT")
