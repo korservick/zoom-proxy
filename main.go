@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"net/url"
@@ -157,11 +158,23 @@ func zoomSend(message zoomMessage, channelID string, token string) {
 	request.Header.Set("Authorization", token)
 	response, err := client.Do(request)
 	if err != nil {
-		log.Printf("Error Do NewRequest %s: %v", zoomUrl, err)
+		log.Printf("Error Do NewRequest url:%s :%v", zoomUrl, err)
 		return
 	}
+	defer func() {
+		err := response.Body.Close()
+		if err != nil {
+			log.Printf("Error close response body:%v", err)
+		}
+	}()
 	if response.StatusCode != 200 {
-		log.Printf("Error Do NewRequest url:%s: token:%v body:%v status:%v", zoomUrl, token, string(bytesRepresentation[:]), response.Status)
+		body, err := io.ReadAll(response.Body)
+		// b, err := ioutil.ReadAll(resp.Body)  Go.1.15 and earlier
+		if err != nil {
+			log.Printf("Error read response body:%v", err)
+		}
+
+		log.Printf("Error Do NewRequest url:%s token:%v body:%v status code:%s status body:%s", zoomUrl, token, string(bytesRepresentation[:]), response.Status, string(body))
 	}
 	sendRequest.WithLabelValues(strconv.Itoa(response.StatusCode)).Inc()
 }
